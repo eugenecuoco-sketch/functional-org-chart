@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Team Function Navigator</title>
+    <!-- Load Tailwind CSS for styling --><script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        'primary': '#4f46e5',
+                        'secondary': '#10b981',
+                        'bg-dark': '#1f2937',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .card-container {
+            perspective: 1000px;
+            height: 25rem; /* Fixed height for consistent flipping */
+            width: 100%;
+        }
+        .flip-card {
+            width: 100%;
+            height: 100%;
+            transition: transform 0.8s;
+            transform-style: preserve-3d;
+            position: relative;
+        }
+        .flip-card.flipped {
+            transform: rotateY(180deg);
+        }
+        .card-face {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            border-radius: 0.75rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+        .card-front {
+            background-color: white;
+            z-index: 2;
+        }
+        .card-back {
+            background-color: #fef3c7; /* Light yellow background */
+            transform: rotateY(180deg);
+        }
+        /* Custom scrollbar for keyword list */
+        .keyword-list::-webkit-scrollbar {
+            width: 4px;
+        }
+        .keyword-list::-webkit-scrollbar-thumb {
+            background-color: #a78bfa;
+            border-radius: 2px;
+        }
+
+        @keyframes pulse-ring {
+            0% { transform: scale(0.3); opacity: 0; }
+            50% { opacity: 0.5; }
+            100% { transform: scale(1.5); opacity: 0; }
+        }
+        .loading-ring {
+            position: relative;
+            width: 20px;
+            height: 20px;
+        }
+        .loading-ring::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: 3px solid #10b981;
+            border-radius: 50%;
+            animation: pulse-ring 1.5s infinite ease-out;
+        }
+
+        /* --- Org Chart Specific Styles --- */
+        .org-chart {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px 0;
+        }
+
+        /* Reports container holds all direct reports */
+        .reports {
+            display: flex;
+            justify-content: center;
+            margin-top: 30px;
+            padding-top: 30px;
+            position: relative;
+            width: 100%; /* Important for centering the line */
+        }
+
+        /* Line from manager to reports container */
+        .reports::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 2px;
+            height: 30px;
+            background-color: #9ca3af; /* gray-400 */
+        }
+
+        /* Horizontal line connecting all reports */
+        .reports::after {
+            content: '';
+            position: absolute;
+            top: 30px; 
+            width: calc(100% - 40px); /* Span the width of the reports group */
+            min-width: 100px;
+            height: 2px;
+            background-color: #9ca3af;
+        }
+
+        /* Individual report wrapper */
+        .report-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 0 10px; 
+            position: relative;
+            flex-basis: 25%; /* Attempt to fit 4 in a row */
+            min-width: 250px;
+            max-width: 300px;
+        }
+        
+        @media (max-width: 1024px) {
+            .report-item {
+                flex-basis: 33%; /* 3 per row on tablet */
+                min-width: 200px;
+            }
+        }
+        @media (max-width: 640px) {
+            .report-item {
+                flex-basis: 100%; /* 1 per row on mobile */
+                min-width: 90%;
+            }
+        }
+
+
+        /* Vertical line from horizontal connector to card */
+        .report-item::before {
+            content: '';
+            position: absolute;
+            top: 30px; 
+            left: 50%;
+            transform: translateX(-50%);
+            width: 2px;
+            height: 30px;
+            background-color: #9ca3af;
+        }
+
+        /* Specific card container for hierarchy view */
+        .hierarchy-card-wrapper {
+             /* Ensures cards don't collapse when responsive */
+            min-width: 250px;
+            max-width: 300px;
+        }
+        
+        /* New class to ensure keyword wrapping and fix bleed */
+        .keyword-area {
+            word-wrap: break-word; /* Ensure long words break */
+            white-space: normal; /* Allow text to wrap */
+            max-height: 4rem; /* Limit height to prevent excessive overflow */
+            overflow: hidden; /* Hide anything that still overflows slightly */
+        }
+    </style>
+</head>
+<body class="min-h-screen">
+    <div id="app" class="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+        <header class="bg-white shadow-lg rounded-xl p-6 mb-8 flex flex-col sm:flex-row justify-between items-center sticky top-0 z-10">
+            <h1 class="text-3xl font-extrabold text-primary mb-4 sm:mb-0">Team Function Navigator</h1>
+            <div class="flex space-x-3">
+                <button id="view-chart-btn" onclick="setView('chart')" class="px-4 py-2 text-sm font-medium rounded-lg shadow-md transition duration-150 ease-in-out bg-primary text-white hover:bg-indigo-600">
+                    Org Chart View
+                </button>
+                <button id="view-input-btn" onclick="setView('input')" class="px-4 py-2 text-sm font-medium rounded-lg shadow-md transition duration-150 ease-in-out bg-gray-200 text-gray-700 hover:bg-gray-300">
+                    Data Intake Form
+                </button>
+            </div>
+        </header>
+
+        <!-- Firestore Initialization Status --><div id="auth-status" class="mb-4 p-3 text-sm rounded-lg text-center bg-yellow-100 text-yellow-800 hidden">
+            <span id="auth-message">Initializing Firebase...</span>
+        </div>
+
+        <!-- Org Chart View (Default) --><div id="chart-view" class="view-section">
+            <div class="mb-6 flex flex-col sm:flex-row gap-4">
+                <input type="text" id="search-input" oninput="searchCards()" placeholder="Search by name, title, team, or keywords (e.g., 'revenue', 'Executive Director')"
+                       class="flex-grow p-3 border border-gray-300 rounded-lg shadow-inner focus:ring-primary focus:border-primary transition">
+                <div id="loading-indicator" class="flex items-center space-x-2 text-gray-600">
+                    <div class="loading-ring"></div>
+                    <span>Loading data...</span>
+                </div>
+            </div>
+
+            <!-- FIX: Container for the Org Chart or Search Results --><div id="org-chart-container">
+                <!-- Hierarchy or grid cards will be injected here by JavaScript --></div>
+            <p id="no-results" class="text-center text-gray-500 mt-10 text-lg hidden">No results found matching your search criteria.</p>
+        </div>
+
+        <!-- Data Intake View --><div id="input-view" class="view-section hidden max-w-2xl mx-auto bg-white p-8 rounded-xl shadow-lg">
+            <h2 class="text-2xl font-bold text-gray-800 mb-6 border-b pb-3">Team/Person Data Intake</h2>
+            <form id="intake-form" onsubmit="handleFormSubmit(event)">
+                <div class="space-y-4">
+                    <div>
+                        <label for="team" class="block text-sm font-medium text-gray-700">1. Team Name (e.g., Financial Systems Oversight)</label>
+                        <input type="text" id="team" name="team" required class="mt-1 block w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-primary focus:border-primary">
+                    </div>
+                    <div>
+                        <label for="name" class="block text-sm font-medium text-gray-700">2. Person's Name (e.g., Eugene Cuoco)</label>
+                        <input type="text" id="name" name="name" required class="mt-1 block w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-primary focus:border-primary">
+                    </div>
+                    <div>
+                        <label for="title" class="block text-sm font-medium text-gray-700">3. Job Title</label>
+                        <input type="text" id="title" name="title" required class="mt-1 block w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-primary focus:border-primary">
+                    </div>
+                    <div>
+                        <label for="description" class="block text-sm font-medium text-gray-700">4. Team/Job Function Description</label>
+                        <textarea id="description" name="description" rows="3" required class="mt-1 block w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-primary focus:border-primary"></textarea>
+                        <p class="mt-1 text-xs text-gray-500">This appears on the back of the card.</p>
+                    </div>
+                    <div>
+                        <label for="keywords" class="block text-sm font-medium text-gray-700">5. Searchable Keywords (Comma-separated)</label>
+                        <input type="text" id="keywords" name="keywords" placeholder="e.g., revenue, finance, strategy, oversight, budgeting" required class="mt-1 block w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-primary focus:border-primary">
+                        <p class="mt-1 text-xs text-gray-500">These are used by the search bar.</p>
+                    </div>
+                    <div>
+                        <label for="managerName" class="block text-sm font-medium text-gray-700">6. Manager Name</label>
+                        <input type="text" id="managerName" name="managerName" required class="mt-1 block w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-primary focus:border-primary">
+                        <p class="mt-1 text-xs text-gray-500">Enter the full name of this person's manager. Leave blank for the highest-level leader.</p>
+                    </div>
+                </div>
+
+                <button type="submit" id="submit-btn" class="mt-6 w-full px-4 py-3 text-lg font-semibold rounded-lg shadow-xl transition duration-150 ease-in-out bg-secondary text-white hover:bg-emerald-600 focus:outline-none focus:ring-4 focus:ring-emerald-500 focus:ring-opacity-50 flex items-center justify-center">
+                    <span id="submit-text">Add Team Member</span>
+                    <span id="submit-spinner" class="hidden ml-3 loading-ring"></span>
+                </button>
+
+                <div id="form-message-box" class="mt-4 p-3 rounded-lg text-center hidden"></div>
+
+            </form>
+        </div>
+
+    </div>
+
+    <!-- Firebase SDK Imports (Module Script) --><script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, onSnapshot, collection, setDoc, query, addDoc, getDocs, serverTimestamp, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global variables provided by the Canvas environment
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let db, auth, userId;
+        let allData = []; // Store all fetched data globally
+        let isAuthReady = false;
+        let editingItemId = null; // New state to track the item being edited
+
+        // Make functions globally accessible
+        window.searchCards = searchCards;
+        window.handleFormSubmit = handleFormSubmit;
+        window.setView = setView;
+        window.flipCard = flipCard;
+        window.startEdit = startEdit;
+
+        // --- Data Definitions ---
+        const COLLECTION_PATH = `artifacts/${appId}/users/{{userId}}/orgData`;
+        const INITIAL_DATA = [
+            // Your team: Financial Systems Oversight
+            {
+                team: "Financial Systems Oversight",
+                name: "Eugene Cuoco",
+                title: "Executive Director, Finance B...",
+                keywords: ["executive", "leadership", "finance systems", "strategy", "governance"],
+                description: "Leads the strategic direction and governance for all major financial systems across the organization, ensuring regulatory compliance and operational excellence.",
+                managerName: '',
+                photoUrl: "https://placehold.co/100x100/374151/ffffff?text=EC"
+            },
+            {
+                team: "Financial Systems Oversight (Roxana's Team)",
+                name: "Roxana Tunea",
+                title: "Director, Product Revenue",
+                keywords: ["director", "revenue", "product", "forecasting", "reporting"],
+                description: "Manages the product revenue stream, focusing on accurate forecasting, reporting, and implementation of revenue recognition policies.",
+                managerName: 'Eugene Cuoco',
+                photoUrl: "https://placehold.co/100x100/374151/ffffff?text=RT"
+            },
+            {
+                team: "Financial Systems Oversight (Roxana's Team)",
+                name: "Altamash Faizan",
+                title: "Project Manager, Operational...",
+                keywords: ["project management", "operations", "implementation", "process improvement"],
+                description: "Drives operational efficiency through project management of finance system rollouts and process improvement initiatives.",
+                // Initial manager setting, user will change this via the new Edit feature
+                managerName: 'Roxana Tunea', 
+                photoUrl: "https://placehold.co/100x100/374151/ffffff?text=AF" // This will be dynamically generated now
+            },
+             {
+                team: "Financial Systems Oversight (Matthew's Team)",
+                name: "Matthew Strickland",
+                title: "Product Catalog Director",
+                keywords: ["product catalog", "data governance", "sku management", "systems integration"],
+                managerName: 'Eugene Cuoco',
+                description: "Oversees the product catalog data structure, ensuring consistency and integrity for all financial reporting and transactional systems.",
+                photoUrl: "https://placehold.co/100x100/374151/ffffff?text=MS"
+            },
+             {
+                team: "Financial Systems Oversight (Nicholas' Team)",
+                name: "Nicholas Sanchez",
+                title: "Associate Financial Analyst",
+                keywords: ["analyst", "financial analysis", "data validation", "support"],
+                description: "Provides analytical support and data validation for key financial processes, assisting in quarter-end close activities.",
+                managerName: 'Eugene Cuoco',
+                photoUrl: "https://placehold.co/100x100/374151/ffffff?text=NS"
+            }
+        ];
+
+
+        // --- Core Functions ---
+
+        async function initializeFirebase() {
+            try {
+                if (!firebaseConfig) {
+                    throw new Error("Firebase config is missing.");
+                }
+
+                const app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+
+                const authMessageEl = document.getElementById('auth-message');
+                const authStatusEl = document.getElementById('auth-status');
+                authStatusEl.classList.remove('hidden');
+
+                await new Promise((resolve) => {
+                    onAuthStateChanged(auth, async (user) => {
+                        if (user) {
+                            userId = user.uid;
+                            authMessageEl.textContent = `Authenticated as User ID: ${userId}`;
+                            authStatusEl.classList.replace('bg-yellow-100', 'bg-green-100');
+                            authStatusEl.classList.replace('text-yellow-800', 'text-green-800');
+                            resolve();
+                        } else {
+                            if (initialAuthToken) {
+                                await signInWithCustomToken(auth, initialAuthToken);
+                            } else {
+                                await signInAnonymously(auth);
+                            }
+                        }
+                    });
+                });
+
+                isAuthReady = true;
+
+                await ensureInitialData(userId);
+                setupDataListener(userId);
+
+            } catch (error) {
+                console.error("Firebase initialization or authentication failed:", error);
+                const authMessageEl = document.getElementById('auth-message');
+                authMessageEl.textContent = `Authentication Failed: ${error.message}. Check console for details.`;
+                document.getElementById('auth-status').classList.replace('bg-yellow-100', 'bg-red-100');
+                document.getElementById('auth-status').classList.replace('text-yellow-800', 'text-red-800');
+            } finally {
+                document.getElementById('loading-indicator').classList.add('hidden');
+            }
+        }
+
+        async function ensureInitialData(currentUserId) {
+            const teamCollectionPath = COLLECTION_PATH.replace('{{userId}}', currentUserId);
+            const teamRef = collection(db, teamCollectionPath);
+            const snapshot = await getDocs(teamRef);
+
+            if (snapshot.docs.length === 0) {
+                console.log("Seeding initial data...");
+                for (const item of INITIAL_DATA) {
+                    await addDoc(teamRef, {
+                        ...item,
+                        keywords: item.keywords.join(', '),
+                        managerName: item.managerName || '',
+                        createdAt: serverTimestamp()
+                    });
+                }
+                await setDoc(doc(db, teamCollectionPath, "_seed_status"), { seeded: true, timestamp: serverTimestamp() });
+                console.log("Initial data seeding complete.");
+            }
+        }
+
+        function setupDataListener(currentUserId) {
+            if (!isAuthReady || !db) return;
+
+            const teamCollectionPath = COLLECTION_PATH.replace('{{userId}}', currentUserId);
+            const q = query(collection(db, teamCollectionPath));
+
+            onSnapshot(q, (snapshot) => {
+                const fetchedData = [];
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+                    if (doc.id !== "_seed_status") {
+                        fetchedData.push({
+                            id: doc.id,
+                            ...data,
+                            keywordsArray: data.keywords ? data.keywords.toLowerCase().split(',').map(k => k.trim()) : []
+                        });
+                    }
+                });
+                allData = fetchedData;
+                
+                // When data changes, re-render the hierarchy (unless a search is active)
+                const query = document.getElementById('search-input').value.toLowerCase().trim();
+                if (query) {
+                    searchCards(); // Re-run search on new data
+                } else {
+                    renderHierarchy(allData);
+                }
+                
+                document.getElementById('loading-indicator').classList.add('hidden');
+            }, (error) => {
+                console.error("Error setting up data listener:", error);
+                document.getElementById('auth-message').textContent = `Data Error: ${error.message}.`;
+                document.getElementById('auth-status').classList.replace('bg-green-100', 'bg-red-100');
+                document.getElementById('auth-status').classList.replace('text-green-800', 'text-red-800');
+            });
+        }
+        
+        // --- Hierarchy Functions ---
+        
+        /**
+         * Builds a map representing the reporting structure.
+         */
+        function buildHierarchy(data) {
+            const hierarchy = {};
+            // 1. Initialize map with all people
+            data.forEach(person => {
+                hierarchy[person.name] = { ...person, reports: [] };
+            });
+
+            // 2. Assign reports to their managers
+            data.forEach(person => {
+                if (person.managerName && hierarchy[person.managerName]) {
+                    hierarchy[person.managerName].reports.push(person.name);
+                }
+            });
+            return hierarchy;
+        }
+        
+        /**
+         * Recursively generates the HTML for the organization chart.
+         */
+        function generateOrgChartHtml(person, hierarchy, rawData) {
+            const data = rawData.find(d => d.name === person.name);
+            if (!data) return ''; // Skip if data is missing
+
+            let reportsHtml = '';
+            
+            // Sort reports alphabetically by name
+            const sortedReports = person.reports
+                .map(reportName => hierarchy[reportName])
+                .filter(report => report) // filter out missing entries
+                .sort((a, b) => a.name.localeCompare(b.name));
+            
+            if (sortedReports.length > 0) {
+                const reportItemsHtml = sortedReports.map(report => {
+                    return `
+                        <div class="report-item">
+                            ${generateOrgChartHtml(report, hierarchy, rawData)}
+                        </div>
+                    `;
+                }).join('');
+
+                // Apply flex-wrap for responsiveness
+                reportsHtml = `
+                    <div class="reports flex flex-wrap justify-center gap-y-12">
+                        ${reportItemsHtml}
+                    </div>
+                `;
+            }
+
+            const cardHtml = `
+                <div class="hierarchy-card-wrapper">
+                    ${createCardHtml(data)}
+                </div>
+            `;
+            
+            // The structure: [Manager Card] -> [Reports Container (with lines)]
+            return `
+                <div class="org-chart">
+                    ${cardHtml}
+                    ${reportsHtml}
+                </div>
+            `;
+        }
+
+        /**
+         * Renders either the hierarchy or the simple search results.
+         */
+        function renderHierarchy(data) {
+            const containerEl = document.getElementById('org-chart-container');
+            const noResultsEl = document.getElementById('no-results');
+            containerEl.innerHTML = '';
+            noResultsEl.classList.add('hidden');
+            
+            const hierarchy = buildHierarchy(data);
+            
+            // Find the true root (the person with no manager, or blank name)
+            const rootKey = Object.keys(hierarchy).find(name => !hierarchy[name].managerName || hierarchy[name].managerName.trim() === '');
+            
+            if (rootKey) {
+                const chartHtml = generateOrgChartHtml(hierarchy[rootKey], hierarchy, data);
+                containerEl.innerHTML = chartHtml;
+            } else if (data.length > 0) {
+                // If data exists but no clear root, display all cards (not ideal, but safer)
+                containerEl.innerHTML = `<div id="card-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"></div>`;
+                renderSimpleCardList(data, document.getElementById('card-list'));
+                
+            } else {
+                noResultsEl.textContent = "No team members found. Add data using the intake form.";
+                noResultsEl.classList.remove('hidden');
+            }
+        }
+        
+        /**
+         * Renders a simple, non-hierarchical grid of cards (used for search results).
+         */
+        function renderSimpleCardList(data, targetEl) {
+             const sortedData = data.sort((a, b) => a.name.localeCompare(b.name));
+             sortedData.forEach(item => {
+                const cardHtml = createCardHtml(item);
+                targetEl.insertAdjacentHTML('beforeend', cardHtml);
+            });
+            if (data.length === 0) {
+                 document.getElementById('no-results').classList.remove('hidden');
+            }
+        }
+
+        /**
+         * Generates initials from a full name.
+         * FIX: Ensure initials are correctly extracted even for multi-word names.
+         */
+        function generateInitials(fullName) {
+            if (!fullName) return '?';
+            const nameParts = fullName.split(' ').filter(part => part.length > 0);
+            if (nameParts.length === 0) return '?';
+            
+            if (nameParts.length === 1) {
+                return nameParts[0].charAt(0).toUpperCase();
+            } else {
+                return (nameParts[0].charAt(0) + nameParts[nameParts.length - 1].charAt(0)).toUpperCase();
+            }
+        }
+
+        /**
+         * Creates the HTML structure for a single flip card.
+         */
+        function createCardHtml(data) {
+            const keywords = data.keywordsArray.join(', '); // Show all keywords
+            const managerDisplay = data.managerName ? `Manager: ${data.managerName}` : 'Top-Level Leader';
+            const managerClass = data.managerName ? 'text-gray-500' : 'text-primary font-bold';
+            
+            // Generate photoUrl dynamically using the helper function
+            const initials = generateInitials(data.name);
+            const photoUrl = data.photoUrl || `https://placehold.co/100x100/374151/ffffff?text=${initials}`;
+
+
+            return `
+                <div class="card-container cursor-pointer" onclick="flipCard(this)">
+                    <div id="flip-card-${data.id}" class="flip-card">
+                        <!-- Card Front: Basic Org Chart Info --><div class="card-face card-front">
+                            <div class="flex items-start space-x-4 mb-4">
+                                <img class="w-16 h-16 rounded-full object-cover shadow-md flex-shrink-0"
+                                     src="${photoUrl}"
+                                     alt="${data.name}">
+                                <div class="flex-grow min-w-0">
+                                    <p class="text-xs font-semibold text-primary mb-1">${data.team}</p>
+                                    <h3 class="text-xl font-bold text-gray-900">${data.name}</h3>
+                                    <p class="text-sm text-gray-600">${data.title}</p>
+                                </div>
+                            </div>
+                            
+                            <div class="flex flex-col flex-grow justify-end">
+                                <div class="mb-4">
+                                    <p class="text-xs ${managerClass} mb-2">${managerDisplay}</p>
+                                    <p class="text-xs font-semibold text-gray-500 mb-1">Keywords:</p>
+                                    <!-- FIX: Removed truncate, added keyword-area class for wrapping --><p class="text-sm text-gray-800 keyword-area">${keywords}</p>
+                                </div>
+                                <div class="flex justify-between items-center pt-2 border-t border-gray-100">
+                                    <span class="text-sm text-primary opacity-70">Click to flip for details</span>
+                                    <!-- FIX: Edit button is now properly positioned inside the flex container --><button onclick="event.stopPropagation(); startEdit('${data.id}')"
+                                            class="px-3 py-1 text-xs font-semibold rounded-lg bg-indigo-100 text-primary hover:bg-indigo-200 transition shadow-sm">
+                                        Edit
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Card Back: Job Function and Keywords --><div class="card-face card-back">
+                            <div class="flex-grow overflow-y-auto keyword-list">
+                                <h3 class="text-xl font-bold text-gray-900 mb-2">${data.team} Function</h3>
+                                <p class="text-sm text-gray-700 leading-relaxed mb-4">${data.description}</p>
+                                <p class="text-xs font-semibold text-gray-600 mb-1">All Searchable Keywords:</p>
+                                <div class="flex flex-wrap gap-1">
+                                    ${data.keywordsArray.map(k => `<span class="px-2 py-0.5 text-xs font-medium bg-amber-200 text-amber-800 rounded-full">${k}</span>`).join('')}
+                                </div>
+                            </div>
+                            <div class="mt-4 pt-4 border-t border-gray-200 text-xs text-gray-500">
+                                Data for: ${data.name} | ID: ${data.id}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        /**
+         * Flips a card when clicked.
+         */
+        function flipCard(cardContainer) {
+            const flipCardEl = cardContainer.querySelector('.flip-card');
+            flipCardEl.classList.toggle('flipped');
+        }
+
+        /**
+         * Filters the rendered cards based on the search input.
+         */
+        function searchCards() {
+            const query = document.getElementById('search-input').value.toLowerCase().trim();
+            const containerEl = document.getElementById('org-chart-container');
+
+            if (!query) {
+                renderHierarchy(allData); // Go back to hierarchy view
+                return;
+            }
+
+            const filteredData = allData.filter(item => {
+                const frontFaceMatch = item.name.toLowerCase().includes(query) ||
+                                       item.title.toLowerCase().includes(query) ||
+                                       item.team.toLowerCase().includes(query) ||
+                                       (item.managerName && item.managerName.toLowerCase().includes(query));
+
+                const keywordMatch = item.keywordsArray.some(keyword => keyword.includes(query));
+
+                return frontFaceMatch || keywordMatch;
+            });
+
+            // Temporarily use a flat grid for search results
+            containerEl.innerHTML = `<div id="card-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"></div>`;
+            renderSimpleCardList(filteredData, document.getElementById('card-list'));
+        }
+        
+        /**
+         * Populates the form with existing data to initiate an edit.
+         */
+        function startEdit(itemId) {
+            const item = allData.find(d => d.id === itemId);
+            if (!item) {
+                console.error("Item not found for editing:", itemId);
+                return;
+            }
+            
+            editingItemId = itemId;
+            
+            // 1. Populate the form fields
+            document.getElementById('team').value = item.team;
+            document.getElementById('name').value = item.name;
+            document.getElementById('title').value = item.title;
+            document.getElementById('description').value = item.description;
+            document.getElementById('keywords').value = item.keywords; // keywords is stored as string
+            document.getElementById('managerName').value = item.managerName;
+            
+            // 2. Update submit button text
+            document.getElementById('submit-text').textContent = 'Save Changes';
+            
+            // 3. Switch view
+            setView('input');
+        }
+
+        /**
+         * Handles submission of the data intake form (both Add and Update).
+         */
+        async function handleFormSubmit(event) {
+            event.preventDefault();
+
+            const submitBtn = document.getElementById('submit-btn');
+            const submitText = document.getElementById('submit-text');
+            const submitSpinner = document.getElementById('submit-spinner');
+            const messageBox = document.getElementById('form-message-box');
+
+            if (!isAuthReady || !db) {
+                messageBox.textContent = 'Error: Authentication not ready. Please wait or reload.';
+                messageBox.classList.remove('hidden', 'bg-green-100', 'text-green-800');
+                messageBox.classList.add('bg-red-100', 'text-red-800');
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitText.textContent = 'Saving...';
+            submitSpinner.classList.remove('hidden');
+            messageBox.classList.add('hidden');
+
+            try {
+                const formData = new FormData(event.target);
+                const data = Object.fromEntries(formData.entries());
+
+                const processedData = {
+                    team: data.team.trim(),
+                    name: data.name.trim(),
+                    title: data.title.trim(),
+                    description: data.description.trim(),
+                    keywords: data.keywords.toLowerCase().trim(),
+                    managerName: data.managerName.trim(), 
+                    // Dynamically generate photo URL with corrected initials logic
+                    photoUrl: `https://placehold.co/100x100/374151/ffffff?text=${generateInitials(data.name)}`,
+                };
+
+                const teamCollectionPath = COLLECTION_PATH.replace('{{userId}}', userId);
+                
+                if (editingItemId) {
+                    // --- UPDATE OPERATION ---
+                    const docRef = doc(db, teamCollectionPath, editingItemId);
+                    await setDoc(docRef, processedData, { merge: true });
+
+                    messageBox.textContent = `Success! Updated ${processedData.name}.`;
+                    
+                    // Reset editing state
+                    editingItemId = null;
+                    document.getElementById('submit-text').textContent = 'Add Team Member';
+                    
+                } else {
+                    // --- ADD OPERATION ---
+                    processedData.createdAt = serverTimestamp();
+                    
+                    // Simple validation check for a new top leader (assuming only one is allowed)
+                    const existingLeader = allData.find(d => !d.managerName || d.managerName.trim() === '');
+                    if (!processedData.managerName && existingLeader) {
+                        throw new Error(`A top-level leader (${existingLeader.name}) already exists. Please enter a Manager Name for this new person.`);
+                    }
+                    
+                    await addDoc(collection(db, teamCollectionPath), processedData);
+                    messageBox.textContent = `Success! Added ${processedData.name} to the database.`;
+                }
+                
+                messageBox.classList.remove('hidden', 'bg-red-100', 'text-red-800');
+                messageBox.classList.add('bg-green-100', 'text-green-800');
+                event.target.reset(); // Clear form on success
+
+            } catch (error) {
+                console.error("Error saving data: ", error);
+                messageBox.textContent = `Error saving data: ${error.message}`;
+                messageBox.classList.remove('hidden', 'bg-green-100', 'text-green-800');
+                messageBox.classList.add('bg-red-100', 'text-red-800');
+            } finally {
+                submitBtn.disabled = false;
+                submitSpinner.classList.add('hidden');
+                
+                // If it was an ADD operation, reset the button text (if it was an update, it's already reset above)
+                if (!editingItemId) {
+                    document.getElementById('submit-text').textContent = 'Add Team Member';
+                }
+
+                if (messageBox.classList.contains('bg-green-100')) {
+                    setTimeout(() => setView('chart'), 1500);
+                }
+            }
+        }
+
+        /**
+         * Toggles the main view between the chart and the intake form.
+         */
+        function setView(viewName) {
+            document.querySelectorAll('.view-section').forEach(el => el.classList.add('hidden'));
+            document.getElementById(`${viewName}-view`).classList.remove('hidden');
+
+            // Reset the form if switching to input and not currently editing
+            if (viewName === 'input' && !editingItemId) {
+                 document.getElementById('intake-form').reset();
+                 document.getElementById('submit-text').textContent = 'Add Team Member';
+                 document.getElementById('form-message-box').classList.add('hidden');
+            }
+
+            // Update button styles
+            document.getElementById('view-chart-btn').classList.remove('bg-gray-200', 'text-gray-700', 'hover:bg-gray-300');
+            document.getElementById('view-chart-btn').classList.add('bg-primary', 'text-white', 'hover:bg-indigo-600');
+            document.getElementById('view-input-btn').classList.remove('bg-primary', 'text-white', 'hover:bg-indigo-600');
+            document.getElementById('view-input-btn').classList.add('bg-gray-200', 'text-gray-700', 'hover:bg-gray-300');
+
+            if (viewName === 'input') {
+                document.getElementById('view-input-btn').classList.replace('bg-gray-200', 'bg-primary');
+                document.getElementById('view-input-btn').classList.replace('text-gray-700', 'text-white');
+                document.getElementById('view-chart-btn').classList.replace('bg-primary', 'bg-gray-200');
+                document.getElementById('view-chart-btn').classList.replace('text-white', 'text-gray-700');
+            }
+        }
+
+
+        // --- Startup ---
+        window.onload = initializeFirebase;
+
+    </script>
+</body>
+</html>
