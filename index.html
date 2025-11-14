@@ -270,10 +270,12 @@
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, onSnapshot, collection, setDoc, query, addDoc, getDocs, serverTimestamp, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Global variables provided by the Canvas environment
+        // --- RESTORED GLOBAL VARIABLE CONFIGURATION ---
+        // These variables are provided by the Canvas environment and ensure correct Firebase initialization.
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        // ----------------------------------------------
 
         let db, auth, userId;
         let allData = []; // Store all fetched data globally
@@ -348,6 +350,9 @@
                     throw new Error("Firebase config is missing.");
                 }
 
+                // Enable Firestore logging for debugging
+                setLogLevel('debug');
+                
                 const app = initializeApp(firebaseConfig);
                 auth = getAuth(app);
                 db = getFirestore(app);
